@@ -114,7 +114,7 @@ def upload_image():
             im = im.cuda()
             tic = time.time()
             loc, conf, landms = net(im)
-            print('net forward time: {:.4f}'.format(time.time() - tic))
+            # print('net forward time: {:.4f}'.format(time.time() - tic))
             priorbox = PriorBox(cfg, image_size=(im_height, im_width))
             priors = priorbox.forward()
             priors = priors.cuda()
@@ -157,22 +157,12 @@ def upload_image():
 
             dets = np.concatenate((dets, landms), axis=1)
 
-            print(dets[:, :5])
+            # print(dets[:, :5])
 
             result_data = dets[:, :5].tolist()
 
-
-
-
             data['success'] = True
             data['prediction'] = result_data
-            # print(jsonify(result))
-            # return img_stream
-            # draw = ImageDraw.Draw(pil_img)
-            # print(pil_img)
-            # draw.polygon()
-            # print(top, right, bottom, left)
-            # return detect_faces_in_image(file)
 
     # If no valid image file was uploaded, show the file upload form:
     # print(data)
