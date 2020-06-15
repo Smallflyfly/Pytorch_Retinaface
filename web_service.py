@@ -15,7 +15,7 @@ from PIL import Image
 from torch.backends import cudnn
 import numpy as np
 
-from data import cfg_re50
+from data import cfg_re50, cfg_mnet
 from layers.functions.prior_box import PriorBox
 from models.retinaface import RetinaFace
 from utils.box_utils import decode, decode_landm
@@ -65,12 +65,14 @@ def load_model(model, pretrained_path):
     return model
 
 
-cfg = cfg_re50
-trained_model = './weights/Resnet50_epoch_95.pth'
+# cfg = cfg_re50
+cfg = cfg_mnet
+# trained_model = './weights/Resnet50_epoch_95.pth'
+trained_model = './weights/mobilenet0.25_epoch_245.pth'
 # net and model
 net = RetinaFace(cfg=cfg, phase='test')
 net = load_model(net, trained_model)
-net.cuda()
+net = net.cuda(0)
 cudnn.benchmark = True
 net.eval()
 resize = 1
@@ -108,7 +110,7 @@ def upload_image():
             scale = scale.float()
             scale = scale.cuda()
             im -= (104, 117, 123)
-            im = im.transpose(2, 0, 1)
+            im = im.transpose((2, 0, 1))
             im = torch.from_numpy(im).unsqueeze(0)
             im = im.float()
             im = im.cuda()
