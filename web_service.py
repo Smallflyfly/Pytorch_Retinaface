@@ -101,6 +101,7 @@ def upload_image():
             im = cv2.cvtColor(np.asarray(im), cv2.COLOR_RGB2BGR)
             # covert BGR to RGB
             im = im[:, :, ::-1]
+            im = np.array(im).astype(int)
             im_width, im_height = im.shape[1], im.shape[0]
             scale = [im_width, im_height, im_width, im_height]
             scale = torch.from_numpy(np.array(scale))
