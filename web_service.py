@@ -105,10 +105,12 @@ def upload_image():
             im_width, im_height = im.shape[1], im.shape[0]
             scale = [im_width, im_height, im_width, im_height]
             scale = torch.from_numpy(np.array(scale))
+            scale = scale.float()
             scale = scale.cuda()
             im -= (104, 117, 123)
-            im = im.transpose(2, 1, 0)
+            im = im.transpose(2, 0, 1)
             im = torch.from_numpy(im).unsqueeze(0)
+            im = im.float()
             im = im.cuda()
             tic = time.time()
             loc, conf, landms = net(im)
@@ -119,20 +121,21 @@ def upload_image():
             priors_data = priors.data
             boxes = decode(loc.data.squeeze(0), priors_data, cfg['variance'])
             boxes = boxes * scale / resize
-            boxes = boxes.numpy()
-            scores = conf.squeeze(0).data.numpy()[:, 1]
+            boxes = boxes.cpu().numpy()
+            scores = conf.squeeze(0).cpu().detach().numpy()[:, 1]
             landms = decode_landm(landms.data.squeeze(0), priors_data, cfg['variance'])
             scale_landm = torch.from_numpy(np.array([
                 im.shape[3], im.shape[2], im.shape[3], im.shape[2],
                 im.shape[3], im.shape[2], im.shape[3], im.shape[2],
                 im.shape[3], im.shape[2]
             ]))
+            scale_landm = scale_landm.float()
             scale_landm = scale_landm.cuda()
             landms = landms * scale_landm / resize
-            landms = landms.numpy()
+            landms = landms.cpu().numpy()
 
             # ignore low score
-            inds = np.where(scores > 0.02)[0]
+            inds = np.where(scores > 0.6)[0]
             boxes = boxes[inds]
             scores = scores[inds]
 
@@ -154,7 +157,9 @@ def upload_image():
 
             dets = np.concatenate((dets, landms), axis=1)
 
-            result_data = dets.tolist()
+            print(dets[:, :5])
+
+            result_data = dets[:, :5].tolist()
 
 
 

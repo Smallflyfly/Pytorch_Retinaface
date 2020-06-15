@@ -31,3 +31,14 @@ if __name__ == '__main__':
         dets = predict(jpeg.tobytes(), frame)
         for det in dets:
             xmin, ymin, xmax, ymax, conf = det
+            xmin *= 4
+            ymin *= 4
+            xmax *= 4
+            ymax *= 4
+            cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (255, 255, 0), 1)
+        cv2.imshow('im', frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    video_capture.release()
+    cv2.destroyAllWindows()

@@ -129,6 +129,7 @@ def train():
         optimizer.zero_grad()
         loss_l, loss_c, loss_landm = criterion(out, priors, targets)
         loss = cfg['loc_weight'] * loss_l + loss_c + loss_landm
+        # print(loss, loss_c, loss_l, loss_landm)
         loss.backward()
         optimizer.step()
         load_t1 = time.time()
@@ -138,7 +139,7 @@ def train():
               .format(epoch, max_epoch, (iteration % epoch_size) + 1,
               epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
 
-    torch.save(net.state_dict(), save_folder + cfg['name'] + '_Final.pth')
+    torch.save(net.state_dict(), save_folder + cfg['name'] + '.pth')
     # torch.save(net.state_dict(), save_folder + 'Final_Retinaface.pth')
 
 

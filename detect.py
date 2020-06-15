@@ -14,7 +14,7 @@ import time
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
-parser.add_argument('-m', '--trained_model', default='./weights/Resnet50_Final.pth',
+parser.add_argument('-m', '--trained_model', default='./weights/Resnet50_epoch_95.pth',
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
@@ -83,8 +83,9 @@ if __name__ == '__main__':
     resize = 1
 
     # testing begin
-    for i in range(100):
-        image_path = "./curve/test.jpg"
+    for i in range(10):
+        # image_path = "./curve/test1.jpg"
+        image_path = "./fang.jpg"
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
         img = np.float32(img_raw)
@@ -142,6 +143,8 @@ if __name__ == '__main__':
 
         dets = np.concatenate((dets, landms), axis=1)
 
+        print(dets)
+        count = 0
         # show image
         if args.save_image:
             for b in dets:
@@ -161,8 +164,9 @@ if __name__ == '__main__':
                 cv2.circle(img_raw, (b[9], b[10]), 1, (255, 0, 255), 4)
                 cv2.circle(img_raw, (b[11], b[12]), 1, (0, 255, 0), 4)
                 cv2.circle(img_raw, (b[13], b[14]), 1, (255, 0, 0), 4)
+                count += 1
             # save image
-
+            print(count)
             name = "test.jpg"
             cv2.imwrite(name, img_raw)
 
