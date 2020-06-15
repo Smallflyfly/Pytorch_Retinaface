@@ -8,12 +8,18 @@
 import io
 import time
 
+import cv2
 import torch
 from flask import Flask, request, jsonify
 from PIL import Image
+from torch.backends import cudnn
+import numpy as np
 
 from data import cfg_re50
+from layers.functions.prior_box import PriorBox
 from models.retinaface import RetinaFace
+from utils.box_utils import decode, decode_landm
+from utils.nms.py_cpu_nms import py_cpu_nms
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -65,10 +71,15 @@ trained_model = './weights/Resnet50_epoch_95.pth'
 net = RetinaFace(cfg=cfg, phase='test')
 net = load_model(net, trained_model)
 net.cuda()
+cudnn.benchmark = True
 net.eval()
+resize = 1
+top_k = 5000
+keep_top_k = 750
+nms_threshold = 0.5
 
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/upload', methods=['GET', 'POST'])
 def upload_image():
     global net
     data = {'success': False}
@@ -84,23 +95,75 @@ def upload_image():
         if file:
             # The image file seems valid! Detect faces and return the result.
             file = io.BytesIO(file)
-            im = Image.open(file)
-            im = im.convert('RGB')
-            im_width, im_height = im.size
+            # im = Image.open(file)
+            # im = im.convert('RGB')
+            im = cv2.imread(file)
+            # covert BGR to RGB
+            im = im[:, :, ::-1]
+            im_width, im_height = im.shape[1], im.shape[0]
             scale = [im_width, im_height, im_width, im_height]
+            scale = torch.from_numpy(np.array(scale))
+            scale = scale.cuda()
             im -= (104, 117, 123)
+            im = im.transpose(2, 1, 0)
             im = torch.from_numpy(im).unsqueeze(0)
             im = im.cuda()
             tic = time.time()
             loc, conf, landms = net(im)
+            print('net forward time: {:.4f}'.format(time.time() - tic))
+            priorbox = PriorBox(cfg, image_size=(im_height, im_width))
+            priors = priorbox.forward()
+            priors = priors.cuda()
+            priors_data = priors.data
+            boxes = decode(loc.data.squeeze(0), priors_data, cfg['variance'])
+            boxes = boxes * scale / resize
+            boxes = boxes.numpy()
+            scores = conf.squeeze(0).data.numpy()[:, 1]
+            landms = decode_landm(landms.data.squeeze(0), priors_data, cfg['variance'])
+            scale_landm = torch.from_numpy(np.array([
+                im.shape[3], im.shape[2], im.shape[3], im.shape[2],
+                im.shape[3], im.shape[2], im.shape[3], im.shape[2],
+                im.shape[3], im.shape[2]
+            ]))
+            scale_landm = scale_landm.cuda()
+            landms = landms * scale_landm / resize
+            landms = landms.numpy()
+
+            # ignore low score
+            inds = np.where(scores > 0.02)[0]
+            boxes = boxes[inds]
+            scores = scores[inds]
+
+            # keep top-K before NMS
+            order = np.argsort(-scores)[:top_k]
+            boxes = boxes[order]
+            landms = landms[order]
+            scores = scores[order]
+
+            # do nms
+            dets = np.hstack((boxes, scores[:, np.newaxis])).astype(float, copy=False)
+            keep = py_cpu_nms(dets, nms_threshold)
+            dets = dets[keep, :]
+            landms = landms[keep]
+
+            # keep top-K fater NMS
+            dets = dets[:keep_top_k, :]
+            landms = landms[:keep_top_k, :]
+
+            dets = np.concatenate((dets, landms), axis=1)
+
+            result_data = dets.tolist()
+
+
+
 
             data['success'] = True
-            data['prediction'] = loc
+            data['prediction'] = result_data
             # print(jsonify(result))
             # return img_stream
-                # draw = ImageDraw.Draw(pil_img)
-                # print(pil_img)
-                # draw.polygon()
+            # draw = ImageDraw.Draw(pil_img)
+            # print(pil_img)
+            # draw.polygon()
             # print(top, right, bottom, left)
             # return detect_faces_in_image(file)
 
