@@ -95,9 +95,10 @@ def upload_image():
         if file:
             # The image file seems valid! Detect faces and return the result.
             file = io.BytesIO(file)
-            # im = Image.open(file)
-            # im = im.convert('RGB')
-            im = cv2.imread(file)
+            im = Image.open(file)
+            im = im.convert('RGB')
+            # im = cv2.imread(file)
+            im = cv2.cvtColor(np.asarray(im), cv2.COLOR_RGB2BGR)
             # covert BGR to RGB
             im = im[:, :, ::-1]
             im_width, im_height = im.shape[1], im.shape[0]
@@ -208,4 +209,4 @@ def load_model(model, pretrained_path):
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(host='0.0.0.0', port=8080, debug=True)
