@@ -5,7 +5,7 @@
 
 import os
 from PIL import Image
-from myresnet import resnet50
+from models.myresnet import resnet50
 from torchvision import transforms as T
 import torch
 import cv2

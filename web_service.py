@@ -17,13 +17,11 @@ import numpy as np
 
 from data import cfg_re50, cfg_mnet
 from layers.functions.prior_box import PriorBox
+from models.myresnet import resnet50
 from models.retinaface import RetinaFace
 from utils.box_utils import decode, decode_landm
 from utils.nms.py_cpu_nms import py_cpu_nms
-
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-
-app = Flask(__name__)
+from torchvision import transforms as T
 
 
 def allowed_file(filename):
@@ -65,20 +63,113 @@ def load_model(model, pretrained_path):
     return model
 
 
+def process_face_data(im, im_height, im_width, loc, scale, conf, landms):
+    priorbox = PriorBox(cfg, image_size=(im_height, im_width))
+    priors = priorbox.forward()
+    priors = priors.cuda()
+    priors_data = priors.data
+    boxes = decode(loc.data.squeeze(0), priors_data, cfg['variance'])
+    boxes = boxes * scale / resize
+    boxes = boxes.cpu().numpy()
+    scores = conf.squeeze(0).cpu().detach().numpy()[:, 1]
+    landms = decode_landm(landms.data.squeeze(0), priors_data, cfg['variance'])
+    scale_landm = torch.from_numpy(np.array([
+        im.shape[3], im.shape[2], im.shape[3], im.shape[2],
+        im.shape[3], im.shape[2], im.shape[3], im.shape[2],
+        im.shape[3], im.shape[2]
+    ]))
+    scale_landm = scale_landm.float()
+    scale_landm = scale_landm.cuda()
+    landms = landms * scale_landm / resize
+    landms = landms.cpu().numpy()
+
+    # ignore low score
+    inds = np.where(scores > 0.6)[0]
+    boxes = boxes[inds]
+    scores = scores[inds]
+
+    # keep top-K before NMS
+    order = np.argsort(-scores)[:top_k]
+    boxes = boxes[order]
+    landms = landms[order]
+    scores = scores[order]
+
+    # do nms
+    dets = np.hstack((boxes, scores[:, np.newaxis])).astype(float, copy=False)
+    keep = py_cpu_nms(dets, nms_threshold)
+    dets = dets[keep, :]
+    landms = landms[keep]
+
+    # keep top-K fater NMS
+    dets = dets[:keep_top_k, :]
+    landms = landms[:keep_top_k, :]
+    dets = np.concatenate((dets, landms), axis=1)
+
+    result_data = dets[:, :5].tolist()
+
+    return result_data
+
+
+def image_process(im):
+    im = cv2.cvtColor(np.asarray(im), cv2.COLOR_RGB2BGR)
+    # covert BGR to RGB
+    im = im[:, :, ::-1]
+    im = np.array(im).astype(int)
+    im_width, im_height = im.shape[1], im.shape[0]
+    scale = [im_width, im_height, im_width, im_height]
+    scale = torch.from_numpy(np.array(scale))
+    scale = scale.float()
+    scale = scale.cuda()
+    im -= (104, 117, 123)
+    im = im.transpose((2, 0, 1))
+    im = torch.from_numpy(im).unsqueeze(0)
+    im = im.float()
+    im = im.cuda()
+    return im, im_width, im_height, scale
+
+def mask_recognition(data, im):
+    masked = []
+    print(im.size)
+    fang[-1]
+    for det in data:
+        xmin, ymin, xmax, ymax, conf = det
+        xmin = xmin if xmin >= 0 else 0
+        ymin = ymin if ymin >= 0 else 0
+        xmax = xmax if xmax < im.size[0] else im.size[0]
+
+
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+app = Flask(__name__)
+
 # cfg = cfg_re50
 cfg = cfg_mnet
 # trained_model = './weights/Resnet50_epoch_95.pth'
-trained_model = './weights/mobilenet0.25_epoch_245.pth'
+retina_trained_model = './weights/mobilenet0.25_epoch_245.pth'
+mask_trained_model = './weights/net_21.pth'
 # net and model
-net = RetinaFace(cfg=cfg, phase='test')
-net = load_model(net, trained_model)
-net = net.cuda(0)
-cudnn.benchmark = True
-net.eval()
+retina_net = RetinaFace(cfg=cfg, phase='test')
+mask_net = resnet50(num_classes=2)
+# net = load_model(net, retina_trained_model)
+retina_net.load_state_dict(torch.load(retina_trained_model))
+mask_net.load_state_dict(torch.load(mask_trained_model))
+retina_net = retina_net.cuda(0)
+mask_net = mask_net.cuda(0)
+retina_net.eval()
+mask_net.eval()
 resize = 1
 top_k = 5000
 keep_top_k = 750
 nms_threshold = 0.5
+
+cudnn.benchmark = True
+
+transform = T.Compose([
+        T.Resize(size=(256, 256)),
+        T.ToTensor(),
+        T.Normalize([0.56687369, 0.44000871, 0.39886727], [0.2415682, 0.2131414, 0.19494878])
+    ])
 
 
 @app.route('/upload', methods=['GET', 'POST'])
@@ -97,74 +188,19 @@ def upload_image():
         if file:
             # The image file seems valid! Detect faces and return the result.
             file = io.BytesIO(file)
-            im = Image.open(file)
-            im = im.convert('RGB')
+            im_pil = Image.open(file)
+            im = im_pil.convert('RGB')
             # im = cv2.imread(file)
-            im = cv2.cvtColor(np.asarray(im), cv2.COLOR_RGB2BGR)
-            # covert BGR to RGB
-            im = im[:, :, ::-1]
-            im = np.array(im).astype(int)
-            im_width, im_height = im.shape[1], im.shape[0]
-            scale = [im_width, im_height, im_width, im_height]
-            scale = torch.from_numpy(np.array(scale))
-            scale = scale.float()
-            scale = scale.cuda()
-            im -= (104, 117, 123)
-            im = im.transpose((2, 0, 1))
-            im = torch.from_numpy(im).unsqueeze(0)
-            im = im.float()
-            im = im.cuda()
+            im, im_width, im_height, scale = image_process(im)
             tic = time.time()
             loc, conf, landms = net(im)
             # print('net forward time: {:.4f}'.format(time.time() - tic))
-            priorbox = PriorBox(cfg, image_size=(im_height, im_width))
-            priors = priorbox.forward()
-            priors = priors.cuda()
-            priors_data = priors.data
-            boxes = decode(loc.data.squeeze(0), priors_data, cfg['variance'])
-            boxes = boxes * scale / resize
-            boxes = boxes.cpu().numpy()
-            scores = conf.squeeze(0).cpu().detach().numpy()[:, 1]
-            landms = decode_landm(landms.data.squeeze(0), priors_data, cfg['variance'])
-            scale_landm = torch.from_numpy(np.array([
-                im.shape[3], im.shape[2], im.shape[3], im.shape[2],
-                im.shape[3], im.shape[2], im.shape[3], im.shape[2],
-                im.shape[3], im.shape[2]
-            ]))
-            scale_landm = scale_landm.float()
-            scale_landm = scale_landm.cuda()
-            landms = landms * scale_landm / resize
-            landms = landms.cpu().numpy()
-
-            # ignore low score
-            inds = np.where(scores > 0.6)[0]
-            boxes = boxes[inds]
-            scores = scores[inds]
-
-            # keep top-K before NMS
-            order = np.argsort(-scores)[:top_k]
-            boxes = boxes[order]
-            landms = landms[order]
-            scores = scores[order]
-
-            # do nms
-            dets = np.hstack((boxes, scores[:, np.newaxis])).astype(float, copy=False)
-            keep = py_cpu_nms(dets, nms_threshold)
-            dets = dets[keep, :]
-            landms = landms[keep]
-
-            # keep top-K fater NMS
-            dets = dets[:keep_top_k, :]
-            landms = landms[:keep_top_k, :]
-
-            dets = np.concatenate((dets, landms), axis=1)
-
-            # print(dets[:, :5])
-
-            result_data = dets[:, :5].tolist()
+            result_data = process_face_data(im, im_height, im_width, loc, scale, conf, landms)
+            masked = mask_recognition(result_data, im_pil)
 
             data['success'] = True
             data['prediction'] = result_data
+            data['masked'] = masked
 
     # If no valid image file was uploaded, show the file upload form:
     # print(data)
@@ -203,7 +239,6 @@ def load_model(model, pretrained_path):
     check_keys(model, pretrained_dict)
     model.load_state_dict(pretrained_dict, strict=False)
     return model
-
 
 
 if __name__ == "__main__":
