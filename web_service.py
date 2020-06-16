@@ -22,6 +22,7 @@ from models.retinaface import RetinaFace
 from utils.box_utils import decode, decode_landm
 from utils.nms.py_cpu_nms import py_cpu_nms
 from torchvision import transforms as T
+import torch.nn as nn
 
 
 def allowed_file(filename):
@@ -129,20 +130,28 @@ def image_process(im):
 
 def mask_recognition(data, im):
     masked = []
-    print(im.size)
-    fang[-1]
     for det in data:
         xmin, ymin, xmax, ymax, conf = det
         xmin = xmin if xmin >= 0 else 0
         ymin = ymin if ymin >= 0 else 0
-        xmax = xmax if xmax < im.size[0] else im.size[0]
-
+        xmax = xmax if xmax < im.size[0] else im.size[0]-1
+        ymax = ymax if ymax < im.size[1] else im.size[1]-1
+        im = im.crop((xmin, ymin, xmax, ymax))
+        im = transform(im) # 3 * 256 * 256
+        print(im.shape)
+        im = im.reshape((1, im.shape[0], im.shape[1], im.shape[2]))
+        if torch.cuda.is_available():
+            im = im.cuda()
+        out = mask_net(im)
+        out = soft_max(out)
+        y = torch.argmax(out, 1)
+        y = y.detach()
+        masked.append(y)
+    return masked
 
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-
 app = Flask(__name__)
-
 # cfg = cfg_re50
 cfg = cfg_mnet
 # trained_model = './weights/Resnet50_epoch_95.pth'
@@ -170,7 +179,7 @@ transform = T.Compose([
         T.ToTensor(),
         T.Normalize([0.56687369, 0.44000871, 0.39886727], [0.2415682, 0.2131414, 0.19494878])
     ])
-
+soft_max = nn.Softmax()
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_image():
@@ -193,7 +202,7 @@ def upload_image():
             # im = cv2.imread(file)
             im, im_width, im_height, scale = image_process(im)
             tic = time.time()
-            loc, conf, landms = net(im)
+            loc, conf, landms = retina_net(im)
             # print('net forward time: {:.4f}'.format(time.time() - tic))
             result_data = process_face_data(im, im_height, im_width, loc, scale, conf, landms)
             masked = mask_recognition(result_data, im_pil)
