@@ -128,25 +128,25 @@ def image_process(im):
     im = im.cuda()
     return im, im_width, im_height, scale
 
-def mask_recognition(data, im):
+def mask_recognition(data, img):
     masked = []
     for det in data:
         xmin, ymin, xmax, ymax, conf = det
+        w, h = img.size
         xmin = xmin if xmin >= 0 else 0
         ymin = ymin if ymin >= 0 else 0
-        xmax = xmax if xmax < im.size[0] else im.size[0]-1
-        ymax = ymax if ymax < im.size[1] else im.size[1]-1
-        im = im.crop((xmin, ymin, xmax, ymax))
+        xmax = xmax if xmax < w else w-1
+        ymax = ymax if ymax < h else h-1
+        im = img.crop((xmin, ymin, xmax, ymax))
         im = transform(im) # 3 * 256 * 256
-        print(im.shape)
         im = im.reshape((1, im.shape[0], im.shape[1], im.shape[2]))
         if torch.cuda.is_available():
             im = im.cuda()
         out = mask_net(im)
         out = soft_max(out)
         y = torch.argmax(out, 1)
-        y = y.detach()
-        masked.append(y)
+        y = y.cpu().numpy()[0]
+        masked.append(int(y))
     return masked
 
 
@@ -209,7 +209,7 @@ def upload_image():
 
             data['success'] = True
             data['prediction'] = result_data
-            data['masked'] = masked
+            data['masked'] = [masked]
 
     # If no valid image file was uploaded, show the file upload form:
     # print(data)
