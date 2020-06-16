@@ -183,7 +183,6 @@ soft_max = nn.Softmax()
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_image():
-    global net
     data = {'success': False}
     if request.method == 'POST':
         # Check if a valid image file was uploaded
@@ -206,10 +205,9 @@ def upload_image():
             # print('net forward time: {:.4f}'.format(time.time() - tic))
             result_data = process_face_data(im, im_height, im_width, loc, scale, conf, landms)
             masked = mask_recognition(result_data, im_pil)
-
+            [result_data[i].append(masked[i]) for i in range(len(masked))]
             data['success'] = True
             data['prediction'] = result_data
-            data['masked'] = [masked]
 
     # If no valid image file was uploaded, show the file upload form:
     # print(data)
