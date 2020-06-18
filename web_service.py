@@ -157,13 +157,34 @@ def get_face_landmarks(data, img):
     landmarks = []
     for det in data:
         xmin, ymin, xmax, ymax, conf = det
+        xmin, ymin, xmax, ymax = xmin+0.5, ymin+0.5, xmax+0.5, ymax+0.5
         w, h = img.size
-        xmin = xmin if xmin >= 0 else 0
-        ymin = ymin if ymin >= 0 else 0
-        xmax = xmax if xmax < w else w - 1
-        ymax = ymax if ymax < h else h - 1
+        # xmin = xmin if xmin >= 0 else 0
+        # ymin = ymin if ymin >= 0 else 0
+        # xmax = xmax if xmax < w else w - 1
+        # ymax = ymax if ymax < h else h - 1
+        # im = img.crop((xmin, ymin, xmax, ymax))
+        crop_w, crop_h = xmax - xmin + 1, ymax - ymin + 1
+        scale = int(max([crop_w, crop_h]) * 1.1)
+        cx = xmin + crop_w // 2
+        cy = ymin + crop_h // 2
+        xmin = cx - scale // 2
+        xmax = xmin + scale
+        ymin = cy - scale // 2
+        ymax = ymin + scale
+
+        dx = max(0, -xmin)
+        dy = max(0, -ymin)
+        xmin = max(0, xmin)
+        ymin = max(0, ymin)
+
+        edx = max(0, xmax - w)
+        edy = max(0, ymax - h)
+        xmax = min(w, xmax)
+        ymax = min(h, ymax)
+
         im = img.crop((xmin, ymin, xmax, ymax))
-        scale = int(max([xmax - xmin + 1, ymax - ymin + 1]))
+        # im.show()
         im = im.resize((112, 112), Image.ANTIALIAS)
         im = transform2(im).unsqueeze(0).cuda(0)
         _, pre_landmarks = pfld_net(im)

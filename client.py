@@ -19,9 +19,11 @@ def predict(byte_file):
     res = requests.post(REQUEST_URL, files=param)
     res = res.json()
     predictions = []
+    landmarks = []
     if res['success']:
         predictions = res['prediction']
-    return predictions
+        landmarks = res['landmarks']
+    return predictions, landmarks
 
 
 if __name__ == '__main__':
@@ -33,15 +35,17 @@ if __name__ == '__main__':
         _, jpeg = cv2.imencode('.jpg', small_frame)
         rgb_small_frame = small_frame[:, :, ::-1]
         tic = time.time()
-        dets = predict(jpeg.tobytes())
+        dets, landmarks = predict(jpeg.tobytes())
         print('net forward time: {:.4f}'.format(time.time() - tic))
-        for det in dets:
+        for (det, landmark) in zip(dets, landmarks):
             xmin, ymin, xmax, ymax, conf, ismasked = det
             xmin = int(xmin * 4)
             ymin = int(ymin * 4)
             xmax = int(xmax * 4)
             ymax = int(ymax * 4)
             cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (255, 255, 0), 1)
+            for (x, y) in landmark:
+                cv2.circle(frame, (int(x)*4, int(y)*4), 1, (255, 0, 255))
             image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             draw = ImageDraw.Draw(image)
             fontStyle = ImageFont.truetype(
