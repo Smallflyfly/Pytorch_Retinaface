@@ -167,10 +167,9 @@ def get_face_landmarks(data, img):
         im = im.resize((112, 112), Image.ANTIALIAS)
         im = transform2(im).unsqueeze(0).cuda(0)
         _, pre_landmarks = pfld_net(im)
-        landmark = pre_landmarks[0].cpu().detach().numpy().reshape(-1, 2) * [scale, scale]
-        print(landmark)
-        landmarks.append(landmark)
-    return landmark
+        landmark = pre_landmarks[0].cpu().detach().numpy().reshape(-1, 2) * [scale, scale] + [xmin, ymin]
+        landmarks.append(landmark.tolist())
+    return landmarks
 
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
@@ -243,6 +242,7 @@ def upload_image():
             [result_data[i].append(masked[i]) for i in range(len(masked))]
             data['success'] = True
             data['prediction'] = result_data
+            data['landmarks'] = landmarks
 
     # If no valid image file was uploaded, show the file upload form:
     # print(data)
