@@ -18,6 +18,7 @@ import numpy as np
 from data import cfg_re50, cfg_mnet
 from layers.functions.prior_box import PriorBox
 from models.myresnet import resnet50
+from models.pfld import PFLDInference
 from models.retinaface import RetinaFace
 from utils.box_utils import decode, decode_landm
 from utils.nms.py_cpu_nms import py_cpu_nms
@@ -128,6 +129,7 @@ def image_process(im):
     im = im.cuda()
     return im, im_width, im_height, scale
 
+
 def mask_recognition(data, img):
     masked = []
     for det in data:
@@ -138,7 +140,8 @@ def mask_recognition(data, img):
         xmax = xmax if xmax < w else w-1
         ymax = ymax if ymax < h else h-1
         im = img.crop((xmin, ymin, xmax, ymax))
-        im = transform(im) # 3 * 256 * 256
+        # 3 * 256 * 256
+        im = transform1(im)
         im = im.reshape((1, im.shape[0], im.shape[1], im.shape[2]))
         if torch.cuda.is_available():
             im = im.cuda()
@@ -150,23 +153,49 @@ def mask_recognition(data, img):
     return masked
 
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+def get_face_landmarks(data, img):
+    landmarks = []
+    for det in data:
+        xmin, ymin, xmax, ymax, conf = det
+        w, h = img.size
+        xmin = xmin if xmin >= 0 else 0
+        ymin = ymin if ymin >= 0 else 0
+        xmax = xmax if xmax < w else w - 1
+        ymax = ymax if ymax < h else h - 1
+        im = img.crop((xmin, ymin, xmax, ymax))
+        im = im.resize((112, 112), Image.ANTIALIAS)
+        im = transform2(im).unsqueeze(0).cuda(0)
+        _, pre_landmarks = pfld_net(im)
+        landmark = pre_landmarks[0]
+        print(landmark)
+        landmarks.append(landmark)
+    return landmark
+
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 app = Flask(__name__)
 # cfg = cfg_re50
 cfg = cfg_mnet
 # trained_model = './weights/Resnet50_epoch_95.pth'
 retina_trained_model = './weights/mobilenet0.25_epoch_245.pth'
 mask_trained_model = './weights/net_21.pth'
+pfld_trained_model = './weights/checkpoint_epoch_500.pth.tar'
 # net and model
 retina_net = RetinaFace(cfg=cfg, phase='test')
 mask_net = resnet50(num_classes=2)
-# net = load_model(net, retina_trained_model)
+pfld_backbone = PFLDInference()
+# load pre-trained model
 retina_net.load_state_dict(torch.load(retina_trained_model))
 mask_net.load_state_dict(torch.load(mask_trained_model))
+pfld_backbone.load_state_dict(torch.load(pfld_trained_model)['plfd_backbone'])
+
 retina_net = retina_net.cuda(0)
 mask_net = mask_net.cuda(0)
+pfld_net = pfld_backbone.cuda(0)
 retina_net.eval()
 mask_net.eval()
+pfld_net.eval()
+
 resize = 1
 top_k = 5000
 keep_top_k = 750
@@ -174,11 +203,14 @@ nms_threshold = 0.5
 
 cudnn.benchmark = True
 
-transform = T.Compose([
+transform1 = T.Compose([
         T.Resize(size=(256, 256)),
         T.ToTensor(),
         T.Normalize([0.56687369, 0.44000871, 0.39886727], [0.2415682, 0.2131414, 0.19494878])
     ])
+transform2 = T.Compose([
+    T.ToTensor()
+])
 soft_max = nn.Softmax()
 
 @app.route('/upload', methods=['GET', 'POST'])
@@ -205,6 +237,8 @@ def upload_image():
             # print('net forward time: {:.4f}'.format(time.time() - tic))
             result_data = process_face_data(im, im_height, im_width, loc, scale, conf, landms)
             masked = mask_recognition(result_data, im_pil)
+            landmarks = get_face_landmarks(result_data, im_pil)
+
             [result_data[i].append(masked[i]) for i in range(len(masked))]
             data['success'] = True
             data['prediction'] = result_data

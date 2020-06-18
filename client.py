@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
 
-REQUEST_URL = "https://xiaomiqiu.ngrok2.xiaomiqiu.cn/upload"
+REQUEST_URL = "https://smallflyfly.ngrok2.xiaomiqiu.cn/upload"
 
 
 def predict(byte_file):
