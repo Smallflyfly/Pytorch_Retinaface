@@ -163,10 +163,11 @@ def get_face_landmarks(data, img):
         xmax = xmax if xmax < w else w - 1
         ymax = ymax if ymax < h else h - 1
         im = img.crop((xmin, ymin, xmax, ymax))
+        scale = int(max([xmax - xmin + 1, ymax - ymin + 1]))
         im = im.resize((112, 112), Image.ANTIALIAS)
         im = transform2(im).unsqueeze(0).cuda(0)
         _, pre_landmarks = pfld_net(im)
-        landmark = pre_landmarks[0]
+        landmark = pre_landmarks[0].cpu().detach().numpy().reshape(-1, 2) * [scale, scale]
         print(landmark)
         landmarks.append(landmark)
     return landmark
