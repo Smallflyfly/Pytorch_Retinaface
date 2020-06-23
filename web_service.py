@@ -234,6 +234,7 @@ transform2 = T.Compose([
 ])
 soft_max = nn.Softmax()
 
+
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_image():
     data = {'success': False}
