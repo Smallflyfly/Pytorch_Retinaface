@@ -6,8 +6,8 @@ import cv2
 
 
 def demo():
-    url = 'rtsp://admin:fang2831016@192.168.1.109:554/stream1'
-    video_capture = cv2.VideoCapture(url)
+    # url = 'rtsp://admin:fang2831016@192.168.1.109:554/stream1'
+    video_capture = cv2.VideoCapture(0)
     while True:
         _, frame = video_capture.read()
         cv2.imshow('im', frame)

@@ -14,28 +14,32 @@ cfg = cfg_mnet
 retina_trained_model = "./weights/mobilenet0.25_Final.pth"
 # cfg = cfg_re50
 use_cpu = False
+device = torch.device("cpu" if use_cpu else "cuda")
 retina_net = RetinaFace(cfg=cfg, phase='test')
+retina_net.to(device)
 retina_net = load_model(retina_net, retina_trained_model, use_cpu)
 retina_net.eval()
 print('Finished loading model!')
 cudnn.benchmark = True
-device = torch.device("cpu" if use_cpu else "cuda")
 
 
 def retina_detect(im):
     resize = 1
-    im, im_width, im_height, scale = image_process(im)
+    im, im_width, im_height, scale = image_process(im, device)
     loc, conf, landms = retina_net(im)
     result_data = process_face_data(cfg, im, im_height, im_width, loc, scale, conf, landms, resize)
     return result_data
 
 
 if __name__ == '__main__':
-    url = "rtsp://admin:fang2831016@172.27.12.188:554/stream1"
-    video_capture = cv2.VideoCapture(url)
+    # url = "rtsp://admin:fang2831016@172.27.12.188:554/stream1"
+    video_capture = cv2.VideoCapture(0)
     while True:
         _, frame = video_capture.read()
-        face_result = retina_net(frame)
+        # small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+        # _, jpeg = cv2.imencode('.jpg', small_frame)
+        # rgb_small_frame = small_frame[:, :, ::-1]
+        face_result = retina_detect(frame)
         for det in face_result:
             xmin, ymin, xmax, ymax, conf = det
             xmin, ymin, xmax, ymax = int(xmin), int(ymin), int(xmax), int(ymax)
