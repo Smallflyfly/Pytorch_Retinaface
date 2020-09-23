@@ -14,7 +14,7 @@ import time
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
-parser.add_argument('-m', '--trained_model', default='./weights/Resnet50_epoch_95.pth',
+parser.add_argument('-m', '--trained_model', default='./weights/Resnet50_Final.pth',
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
@@ -71,11 +71,11 @@ if __name__ == '__main__':
     elif args.network == "resnet50":
         cfg = cfg_re50
     # net and model
-    net = RetinaFace(cfg=cfg, phase = 'test')
+    net = RetinaFace(cfg=cfg, phase='test')
     net = load_model(net, args.trained_model, args.cpu)
     net.eval()
     print('Finished loading model!')
-    print(net)
+    # print(net)
     cudnn.benchmark = True
     device = torch.device("cpu" if args.cpu else "cuda")
     net = net.to(device)
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     # testing begin
     for i in range(10):
         # image_path = "./curve/test1.jpg"
-        image_path = "./fang.jpg"
+        image_path = "./test.jpg"
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
         img = np.float32(img_raw)
@@ -99,7 +99,7 @@ if __name__ == '__main__':
         scale = scale.to(device)
 
         tic = time.time()
-        loc, conf, landms = net(img)  # forward pass
+        loc, conf, landms, features = net(img)  # forward pass
         print('net forward time: {:.4f}'.format(time.time() - tic))
 
         priorbox = PriorBox(cfg, image_size=(im_height, im_width))
@@ -169,4 +169,3 @@ if __name__ == '__main__':
             print(count)
             name = "test.jpg"
             cv2.imwrite(name, img_raw)
-
