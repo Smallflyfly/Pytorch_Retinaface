@@ -86,6 +86,7 @@ async def uploadFile(file: UploadFile = File(...)):
     file_id = gfs.put(contents, content_type='image/jpeg', filename=file.filename)
     contents = io.BytesIO(contents)
     im_pil = Image.open(contents)
+    im_pil = im_pil.resize((256, 256))
     im = im_pil.convert('RGB')
     im, im_width, im_height, scale = image_process(im, device)
     tic = time.time()
@@ -94,14 +95,18 @@ async def uploadFile(file: UploadFile = File(...)):
     mysqldb = MySQLDB()
     session = mysqldb.session()
     name = file.filename[:file.filename.index('.')]
-    face = Face()
-    face.user_id = str(uuid.uuid1())
-    face.name = name
-    face.feature1 = str(features)
-    print(features)
-    print(len(features))
-    face.image_url = str(file_id)
-    session.add(face)
+    face = session.query(Face).filter(Face.name == name).scaler()
+    if face:
+        face.feature1 = str(features)
+    else:
+        face = Face()
+        face.user_id = str(uuid.uuid1())
+        face.name = name
+        # print(features)
+        # print(len(features))
+        face.feature1 = str(features)
+        face.image_url = str(file_id)
+        session.add(face)
     session.commit()
     session.close()
     # print(len(features.tostring()))
