@@ -129,9 +129,9 @@ class RetinaFace(nn.Module):
         feature3 = nn.functional.interpolate(feature3, scale_factor=4, mode='bilinear', align_corners=False)[:, :, :90, :]
 
         # features_cat = torch.cat()
-        print(feature1.shape)
-        print(feature2.shape)
-        print(feature3.shape)
+        # print(feature1.shape)
+        # print(feature2.shape)
+        # print(feature3.shape)
         # f = torch.cat([feature1, feature2], dim=0)
         features_cat = torch.cat([torch.cat([feature1, feature2], dim=-1), feature3], dim=-1)
         features_cat = features_cat.view(features_cat.shape[0], 1, features_cat.shape[1], -1)

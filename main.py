@@ -7,38 +7,29 @@
 import io
 import time
 import uuid
-from io import StringIO
-from urllib.parse import quote_plus
 
-import bson
-import pymongo
+import cv2
 import torch
 from PIL import Image
 from fastapi import FastAPI, UploadFile, File
 from gridfs import GridFS
-import torch.nn as nn
 from torch.backends import cudnn
 
 from dao.face import Face
 from data import cfg_re50
 from database.mongodb import Mongodb
-import torchvision.transforms as transform
 
 from database.mysqldb import MySQLDB
+from face_center.python.face_detection import face_detection
 from models.retinaface import RetinaFace
 from utils.net_utils import image_process, load_model
+import numpy as np
 
 app = FastAPI()
-
-# uri = 'mongodb://fang:123456@111.229.203.174:27017/?authSource=facedb&authMechanism=SCRAM-SHA-1'
-# client = pymongo.MongoClient(uri)
 mongodb = Mongodb()
 db = mongodb.client.facedb
-# print(db)
 
 cfg = cfg_re50
-# cfg = cfg_mnet
-# trained_model = './weights/Resnet50_epoch_95.pth'
 retina_trained_model = './weights/Resnet50_Final.pth'
 # mask_trained_model = './weights/net_21.pth'
 # pfld_trained_model = './weights/checkpoint_epoch_500.pth.tar'
@@ -78,26 +69,34 @@ cudnn.benchmark = True
 device = torch.device("cuda")
 
 
-@app.post("/uploadFile")
+@app.post("/face/upload")
 async def uploadFile(file: UploadFile = File(...)):
     contents = await file.read()
-    # print(contents)
     gfs = GridFS(db, collection='face')
     file_id = gfs.put(contents, content_type='image/jpeg', filename=file.filename)
-    contents = io.BytesIO(contents)
-    im_pil = Image.open(contents)
-    im_pil = im_pil.resize((256, 256))
-    im = im_pil.convert('RGB')
-    im, im_width, im_height, scale = image_process(im, device)
-    tic = time.time()
-    features = retina_net(im).cpu().detach().numpy().reshape((-1,)).tostring()
+    im_pil, cv_im = init_image(contents)
+    boxes, score = face_detection(cv_im)
+    if len(boxes) == 0:
+        return {"code": 400, "success": False, "message": "未检测出人脸，请重新上传"}
+    print(boxes, score)
+    im_pil = im_pil.crop([boxes[0], boxes[1], boxes[2], boxes[3]])
+    # im_pil = im_pil.resize((256, 256))
+    # im = im_pil.convert('RGB')
+    # im, im_width, im_height, scale = image_process(im, device)
+    # tic = time.time()
+    # features = retina_net(im).cpu().detach().numpy().reshape((-1,)).tostring()
+    # print(time.time() - tic)
+    features = generate_feature(im_pil)
     # features = ",".join(str(f) for f in features.tolist())
     mysqldb = MySQLDB()
     session = mysqldb.session()
     name = file.filename[:file.filename.index('.')]
-    face = session.query(Face).filter(Face.name == name).scaler()
+    face = session.query(Face).filter(Face.name == name).scalar()
     if face:
-        face.feature1 = str(features)
+        face.feature1 = features
+        print(type(features))
+        array = string2array_in(features)
+        print(array)
     else:
         face = Face()
         face.user_id = str(uuid.uuid1())
@@ -124,6 +123,51 @@ async def getFile(file_id):
     return file_id
 
 
+@app.post("/face/match")
+async def faceMatch(file: UploadFile = File(...)):
+    contents = await file.read()
+    im_pil, cv_im = init_image(contents)
+    boxes, score = face_detection(cv_im)
+    if len(boxes) == 0:
+        return {"code": 400, "success": False, "message": "未检测出人脸，请重新上传"}
+    im_pil = im_pil.crop([boxes[0], boxes[1], boxes[2], boxes[3]])
+    feature_in = generate_feature(im_pil)
+    array_in = string2array_in(feature_in)
+    print(array_in)
+    mysqldb = MySQLDB()
+    session = mysqldb.session()
+    faces = session.query(Face).all()
+    max_similarity = 0.0
+    for face in faces:
+        feature_db = face.feature1
+        print(type(feature_db))
+        array_db = string2array_db(feature_db)
+        print(array_db)
+    fang[-1]
 
 
+def generate_feature(im):
+    im = im.resize((256, 256))
+    im = im.convert('RGB')
+    im, im_width, im_height, scale = image_process(im, device)
+    tic = time.time()
+    features = retina_net(im).cpu().detach().numpy().reshape((-1,)).tostring()
+    print(time.time() - tic)
+    return features
 
+
+def init_image(contents):
+    content = io.BytesIO(contents)
+    im_pil = Image.open(content)
+    cv_im = cv2.cvtColor(np.asarray(im_pil), cv2.COLOR_RGB2BGR)
+    return im_pil, cv_im
+
+
+def string2array_in(feature):
+    array = np.fromstring(feature, dtype=np.float32)
+    return array
+
+
+def string2array_db(feature):
+    array = np.fromstring(feature, dtype=np.float)
+    return array
