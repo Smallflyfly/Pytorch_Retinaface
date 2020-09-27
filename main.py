@@ -88,7 +88,7 @@ async def uploadFile(file: UploadFile = File(...)):
     if face:
         face.feature1 = features
         # print(type(features))
-        array = string2array_in(features)
+        # array = string2array(features)
         # print(array.shape)
     else:
         face = Face()
@@ -125,19 +125,27 @@ async def faceMatch(file: UploadFile = File(...)):
         return {"code": 400, "success": False, "message": "未检测出人脸，请重新上传"}
     im_pil = im_pil.crop([boxes[0], boxes[1], boxes[2], boxes[3]])
     feature_in = generate_feature(im_pil)
-    array_in = string2array_in(feature_in).reshape((64, 64))
+    array_in = string2array(feature_in)
     # print(array_in.shape)
-    torch_in_feature = torch.from_numpy(array_in)
+    torch_in_feature = torch.from_numpy(array_in).cuda()
     # print(torch_in_feature.shape)
     mysqldb = MySQLDB()
     session = mysqldb.session()
     faces = session.query(Face).all()
     max_similarity = 0.0
+    name = None
     for face in faces:
         feature_db = face.feature1
-        array_db = string2array_db(feature_db)
+        array_db = string2array(feature_db)
+        torch_db_feature = torch.from_numpy(array_db).cuda()
+        cos_similarity = torch.cosine_similarity(torch_in_feature, torch_db_feature, dim=0)
+        if cos_similarity.cpu().detach().numpy().tolist() > max_similarity:
+            name = face.name
+            max_similarity = cos_similarity.cpu().detach().numpy().tolist()
         # print(array_db)
     # fang[-1]
+    print(max_similarity)
+    return {"code": 200, "success": True, "data": max_similarity, "name": name}
 
 
 def generate_feature(im):
@@ -160,11 +168,7 @@ def init_image(contents):
     return im_pil, cv_im
 
 
-def string2array_in(feature):
-    array = np.fromstring(feature, dtype=np.float32)
+def string2array(feature):
+    array = np.frombuffer(feature, dtype=np.float32)
     return array
 
-
-def string2array_db(feature):
-    array = np.fromstring(feature, dtype=np.float32)
-    return array
