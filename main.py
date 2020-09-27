@@ -78,32 +78,25 @@ async def uploadFile(file: UploadFile = File(...)):
     boxes, score = face_detection(cv_im)
     if len(boxes) == 0:
         return {"code": 400, "success": False, "message": "未检测出人脸，请重新上传"}
-    print(boxes, score)
+    # print(boxes, score)
     im_pil = im_pil.crop([boxes[0], boxes[1], boxes[2], boxes[3]])
-    # im_pil = im_pil.resize((256, 256))
-    # im = im_pil.convert('RGB')
-    # im, im_width, im_height, scale = image_process(im, device)
-    # tic = time.time()
-    # features = retina_net(im).cpu().detach().numpy().reshape((-1,)).tostring()
-    # print(time.time() - tic)
     features = generate_feature(im_pil)
-    # features = ",".join(str(f) for f in features.tolist())
     mysqldb = MySQLDB()
     session = mysqldb.session()
     name = file.filename[:file.filename.index('.')]
     face = session.query(Face).filter(Face.name == name).scalar()
     if face:
         face.feature1 = features
-        print(type(features))
+        # print(type(features))
         array = string2array_in(features)
-        print(array)
+        # print(array.shape)
     else:
         face = Face()
         face.user_id = str(uuid.uuid1())
         face.name = name
         # print(features)
         # print(len(features))
-        face.feature1 = str(features)
+        face.feature1 = features
         face.image_url = str(file_id)
         session.add(face)
     session.commit()
@@ -132,18 +125,19 @@ async def faceMatch(file: UploadFile = File(...)):
         return {"code": 400, "success": False, "message": "未检测出人脸，请重新上传"}
     im_pil = im_pil.crop([boxes[0], boxes[1], boxes[2], boxes[3]])
     feature_in = generate_feature(im_pil)
-    array_in = string2array_in(feature_in)
-    print(array_in)
+    array_in = string2array_in(feature_in).reshape((64, 64))
+    # print(array_in.shape)
+    torch_in_feature = torch.from_numpy(array_in)
+    # print(torch_in_feature.shape)
     mysqldb = MySQLDB()
     session = mysqldb.session()
     faces = session.query(Face).all()
     max_similarity = 0.0
     for face in faces:
         feature_db = face.feature1
-        print(type(feature_db))
         array_db = string2array_db(feature_db)
-        print(array_db)
-    fang[-1]
+        # print(array_db)
+    # fang[-1]
 
 
 def generate_feature(im):
@@ -151,7 +145,10 @@ def generate_feature(im):
     im = im.convert('RGB')
     im, im_width, im_height, scale = image_process(im, device)
     tic = time.time()
-    features = retina_net(im).cpu().detach().numpy().reshape((-1,)).tostring()
+    _, features = retina_net(im)
+    features = features.cpu().detach().numpy().reshape((-1,))
+    # print(features)
+    features = features.tostring()
     print(time.time() - tic)
     return features
 
@@ -169,5 +166,5 @@ def string2array_in(feature):
 
 
 def string2array_db(feature):
-    array = np.fromstring(feature, dtype=np.float)
+    array = np.fromstring(feature, dtype=np.float32)
     return array
