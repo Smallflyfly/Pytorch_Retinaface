@@ -5,6 +5,7 @@
 @time: 2020/09/{DAY}
 """
 import io
+import time
 import uuid
 
 import cv2
@@ -37,8 +38,9 @@ async def uploadFile(file: UploadFile = File(...)):
     gfs = GridFS(db, collection='face')
     file_id = gfs.put(contents, content_type='image/jpeg', filename=file.filename)
     im_pil, cv_im = init_image(contents)
+    tic = time.time()
     dets = face_detection(cv_im)
-    print(dets)
+    print(time.time() - tic)
     if len(dets) == 0:
         return {"code": 400, "success": False, "message": "未检测出人脸，请重新上传"}
     det = dets[0]
@@ -76,14 +78,17 @@ async def getFile(file_id):
 async def faceMatch(file: UploadFile = File(...)):
     contents = await file.read()
     im_pil, cv_im = init_image(contents)
+    tic = time.time()
     dets = face_detection(cv_im)
-    print(dets)
+    print('face detecion time: ', time.time() - tic)
     if len(dets) == 0:
         return {"code": 400, "success": False, "message": "未检测出人脸，请重新上传"}
     det = dets[0]
     boxes, score = det[:4], det[4]
     im_pil = im_pil.crop([boxes[0], boxes[1], boxes[2], boxes[3]])
+    tic = time.time()
     feature_in = generate_feature(im_pil)
+    print('feature generate: ', time.time() - tic)
     array_in = string2array(feature_in)
     torch_in_feature = torch.from_numpy(array_in).cuda().unsqueeze(0)
     mysqldb = MySQLDB()
@@ -91,6 +96,7 @@ async def faceMatch(file: UploadFile = File(...)):
     faces = session.query(Face).all()
     max_similarity = 999999.0
     name = None
+    tic = time.time()
     for face in faces:
         feature_db = face.feature1
         array_db = string2array(feature_db)
@@ -105,6 +111,7 @@ async def faceMatch(file: UploadFile = File(...)):
         # print(array_db)
     # fang[-1]
     # print(max_similarity)
+    print('match time: ', time.time() - tic)
     return {"code": 200, "success": True, "name": name}
 
 
