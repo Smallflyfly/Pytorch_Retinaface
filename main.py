@@ -32,7 +32,7 @@ transform = transforms.Compose(
 resnet = InceptionResnetV1(pretrained='vggface2').eval()
 
 
-@app.post("/face/upload")
+@app.post("/face/upload", description='人脸库上传 只支持单张单人图片')
 async def uploadFile(file: UploadFile = File(...)):
     contents = await file.read()
     gfs = GridFS(db, collection='face')
@@ -74,7 +74,7 @@ async def getFile(file_id):
     return file_id
 
 
-@app.post("/face/match")
+@app.post("/face/match", description='上传图片 人脸比对 返回最相似的姓名')
 async def faceMatch(file: UploadFile = File(...)):
     contents = await file.read()
     im_pil, cv_im = init_image(contents)
@@ -101,15 +101,12 @@ async def faceMatch(file: UploadFile = File(...)):
         feature_db = face.feature1
         array_db = string2array(feature_db)
         torch_db_feature = torch.from_numpy(array_db).cuda().unsqueeze(0)
-        # print(torch_db_feature.shape)
-        # print(torch_in_feature.shape)
         # cos_similarity = torch.cosine_similarity(torch_in_feature, torch_db_feature, dim=0)
         cos_similarity = torch.pairwise_distance(torch_in_feature, torch_db_feature)
         if cos_similarity.cpu().detach().numpy()[0] < max_similarity:
             name = face.name
             max_similarity = cos_similarity.cpu().detach().numpy()[0]
-        # print(array_db)
-    # fang[-1]
+
     # print(max_similarity)
     print('match time: ', time.time() - tic)
     return {"code": 200, "success": True, "name": name}
