@@ -19,9 +19,6 @@ class ClassHead(nn.Module):
     def forward(self, x):
         out1 = self.conv1x1(x)
         out = out1.permute(0, 2, 3, 1).contiguous()
-        # print('-----------------class------------------------')
-        # print(out.view(out.shape[0], -1, 2).shape)
-
         return out.view(out.shape[0], -1, 2)
 
 
@@ -33,9 +30,6 @@ class BboxHead(nn.Module):
     def forward(self, x):
         out1 = self.conv1x1(x)
         out = out1.permute(0, 2, 3, 1).contiguous()
-        # print('-----------------bbox------------------------')
-        # print(out.view(out.shape[0], -1, 4).shape)
-
         return out.view(out.shape[0], -1, 4)
 
 
@@ -47,8 +41,6 @@ class LandmarkHead(nn.Module):
     def forward(self, x):
         out1 = self.conv1x1(x)
         out = out1.permute(0, 2, 3, 1).contiguous()
-        # print('-----------------landmark------------------------')
-        # print(out.view(out.shape[0], -1, 10).shape)
 
         return out.view(out.shape[0], -1, 10)
 
@@ -125,21 +117,6 @@ class RetinaFace(nn.Module):
         feature3 = self.ssh3(fpn[2])
         features = [feature1, feature2, feature3]
 
-        feature2 = nn.functional.interpolate(feature2, scale_factor=2, mode='bilinear', align_corners=False)
-        feature3 = nn.functional.interpolate(feature3, scale_factor=4, mode='bilinear', align_corners=False)[:, :, :90, :]
-
-        # features_cat = torch.cat()
-        # print(feature1.shape)
-        # print(feature2.shape)
-        # print(feature3.shape)
-        # f = torch.cat([feature1, feature2], dim=0)
-        features_cat = torch.cat([torch.cat([feature1, feature2], dim=-1), feature3], dim=-1)
-        features_cat = features_cat.view(features_cat.shape[0], 1, features_cat.shape[1], -1)
-        # print(features_cat.shape)
-        feature_out = nn.functional.interpolate(features_cat, size=(64, 64), mode='bilinear').view(64, 64)
-        # print(feature.shape)
-        # fang[-1]
-
         bbox_regressions = torch.cat([self.BboxHead[i](feature) for i, feature in enumerate(features)], dim=1)
         classifications = torch.cat([self.ClassHead[i](feature) for i, feature in enumerate(features)], dim=1)
         ldm_regressions = torch.cat([self.LandmarkHead[i](feature) for i, feature in enumerate(features)], dim=1)
@@ -148,5 +125,4 @@ class RetinaFace(nn.Module):
             output = (bbox_regressions, classifications, ldm_regressions)
         else:
             output = (bbox_regressions, F.softmax(classifications, dim=-1), ldm_regressions)
-        return output, feature_out
-        # return feature_out
+        return output
