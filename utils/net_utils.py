@@ -6,8 +6,10 @@ import cv2
 import torch
 import numpy as np
 from layers.functions.prior_box import PriorBox
-from utils.box_utils import decode, decode_landm
+from utils.box_utils import decode, decode_landm, decode_cpu
 from utils.nms.py_cpu_nms import py_cpu_nms
+from math import ceil
+from itertools import product as product
 
 
 def check_keys(model, pretrained_state_dict):
@@ -46,6 +48,27 @@ def load_model(model, pretrained_path, load_to_cpu):
     return model
 
 
+def getAnchors(cfg, image_size):
+    min_sizes = cfg['min_sizes']
+    steps = cfg['steps']
+    feature_maps = [[ceil(image_size[0]/step), ceil(image_size[1]/step)] for step in steps]
+    anchors = []
+    for k, f in enumerate(feature_maps):
+        min_size = min_sizes[k]
+        for i, j in product(range(f[0]), range(f[1])):
+            for m_s in min_size:
+                s_x = m_s / image_size[1]
+                s_y = m_s / image_size[0]
+                dense_cx = [x * steps[k] / image_size[1] for x in [j+0.5]]
+                dense_cy = [y * steps[k] / image_size[0] for y in [i+0.5]]
+                for cy, cx in product(dense_cy, dense_cx):
+                    anchors += [cx, cy, s_x, s_y]
+
+    anchors = np.array(anchors).astype('float32')
+    anchors = anchors.reshape(-1, 4)
+    return anchors
+
+
 def process_face_data(cfg, im, im_height, im_width, loc, scale, conf, landms,
                       resize, top_k=5000, nms_threshold=0.4, keep_top_k=750):
     priorbox = PriorBox(cfg, image_size=(im_height, im_width))
@@ -66,6 +89,52 @@ def process_face_data(cfg, im, im_height, im_width, loc, scale, conf, landms,
     scale_landm = scale_landm.cuda()
     landms = landms * scale_landm / resize
     landms = landms.cpu().numpy()
+
+    # ignore low score
+    inds = np.where(scores > 0.6)[0]
+    boxes = boxes[inds]
+    scores = scores[inds]
+
+    # keep top-K before NMS
+    order = np.argsort(-scores)[:top_k]
+    boxes = boxes[order]
+    landms = landms[order]
+    scores = scores[order]
+
+    # do nms
+    dets = np.hstack((boxes, scores[:, np.newaxis])).astype(float, copy=False)
+    keep = py_cpu_nms(dets, nms_threshold)
+    dets = dets[keep, :]
+    landms = landms[keep]
+
+    # keep top-K fater NMS
+    dets = dets[:keep_top_k, :]
+    landms = landms[:keep_top_k, :]
+    dets = np.concatenate((dets, landms), axis=1)
+
+    result_data = dets[:, :5].tolist()
+
+    return result_data
+
+
+def process_face_data_cpu(cfg, im, im_height, im_width, loc, scale, conf, landms,
+                      resize, top_k=5000, nms_threshold=0.4, keep_top_k=750):
+    priors = getAnchors(cfg, image_size=(im_height, im_width))
+    boxes = decode_cpu(loc, priors, cfg['variance'])
+
+    boxes = boxes * scale / resize
+    scores = conf[:, 1]
+
+    # landms = decode_landm(landms.data.squeeze(0), priors_data, cfg['variance'])
+    # scale_landm = torch.from_numpy(np.array([
+    #     im.shape[3], im.shape[2], im.shape[3], im.shape[2],
+    #     im.shape[3], im.shape[2], im.shape[3], im.shape[2],
+    #     im.shape[3], im.shape[2]
+    # ]))
+    # scale_landm = scale_landm.float()
+    # scale_landm = scale_landm.cuda()
+    # landms = landms * scale_landm / resize
+    # landms = landms.cpu().numpy()
 
     # ignore low score
     inds = np.where(scores > 0.6)[0]
